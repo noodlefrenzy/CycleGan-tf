@@ -4,18 +4,26 @@ from generator import Generator
 from images import batch_to_image
 
 class CycleGAN:
-    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, betas=(0.5, 0.9)):
+    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, betas=(0.5, 0.9), verbose=False):
         self.lambdas = lambdas
         self.use_least_square_loss = lsgan
         self.betas = betas
         self.starting_learning_rate = start_lr
+        self.verbose = verbose
+        self.default_params = {
+            'data_format': 'channels_first',
+            'padding': 'same',
+            'epsilon': 1e-5,
+            'momentum': 0.8,
+            'reuse': False
+        }
 
         self.is_training = tf.placeholder_with_default(True, shape=[], name='is_training')
 
-        self.G = Generator('G', self.is_training)
-        self.D_Y = Discriminator('D_Y', self.is_training)
-        self.F = Generator('F', self.is_training)
-        self.D_X = Discriminator('D_X', self.is_training)
+        self.G = Generator('G', self.default_params, is_training=self.is_training, verbose=self.verbose)
+        self.D_Y = Discriminator('D_Y', self.default_params, is_training=self.is_training, verbose=self.verbose)
+        self.F = Generator('F', self.default_params, is_training=self.is_training, verbose=self.verbose)
+        self.D_X = Discriminator('D_X', self.default_params, is_training=self.is_training, verbose=self.verbose)
 
         self.fake_x = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
         self.fake_y = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
@@ -91,8 +99,8 @@ class CycleGAN:
             # use least square (as in paper)
             loss = tf.reduce_mean(tf.squared_difference(D(fake_y), 1.))
         else:
-            # use negative log-likelihood
-            loss = -tf.reduce_mean(ops.safe_log(D(fake_y))) / 2
+            # use negative log-likelihood (+ e to avoid errors at zero)
+            loss = -tf.reduce_mean(tf.log(D(fake_y) + 1e-12)) / 2
         return loss
 
     def cycle_loss(self, F, G, x, y):

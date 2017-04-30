@@ -7,11 +7,6 @@ import tensorflow as tf
 
 import argparse
 
-def exists(x):
-    if not os.path.exists(x) or not os.path.exists(x + '/trainA') or not os.path.exists(x + '/trainB'):
-        raise argparse.ArgumentTypeError('"%s" must be a valid directory containing trainA and trainB dirs.' % x)
-    return x
-
 parser = argparse.ArgumentParser(description='Train a CycleGAN.')
 parser.add_argument('--bs', '--batch-size', type=int, default=1, help='Batch size', dest='batch_size')
 parser.add_argument('--im', '--image-size', type=int, default=256, help='Image size (images are square)', dest='image_size')
@@ -24,13 +19,17 @@ parser.add_argument('--l2', '--lambda2', type=float, default=10., help='Weight f
 parser.add_argument('--lr', '--learning-rate', type=float, default=0.0002, help='Starting learning rate', dest='learning_rate')
 parser.add_argument('--b1', '--beta1', type=float, default=0.5, help='Momentum for Adam optimizer (G)', dest='beta_1')
 parser.add_argument('--b2', '--beta2', type=float, default=0.5, help='Momentum for Adam optimizer (D)', dest='beta_2')
-parser.add_argument('--files', type=exists, help='Location of training files', required=True)
+parser.add_argument('-i', '--input-prefix', help='Prefix path name to tfrecords files.', required=True, dest='input_prefix')
 parser.add_argument('-c', '--checkpoint-dir', default='./checkpoints', help='Checkpoint directory', dest='checkpoint_dir')
 
 def train(args):
     now = datetime.now().strftime("%Y%m%d-%H%M")
-    checkpoints_dir = args.checkpoint_dir
+    checkpoints_dir = os.path.join(args.checkpoint_dir, now)
     os.makedirs(checkpoints_dir, exist_ok=True)
+    logging.info('Checkpointing to "{}"'.format(checkpoints_dir))
+
+    infile_X, infile_Y = ['{}_{}.tfrecords'.format(args.input_prefix, p) for p in ['trainA', 'trainB']]
+    logging.info('Loading data from "{}" and "{}"'.format(infile_X, infile_Y))
 
     graph = tf.Graph()
     with graph.as_default():
@@ -40,12 +39,13 @@ def train(args):
             lsgan=args.use_least_square,
             lambdas=(args.lambda_1, args.lambda_2),
             start_lr=args.learning_rate,
-            betas=(args.beta_1, args.beta_2))
-        inputs_X = Images(args.files + '/trainA', num_epochs=args.num_epochs, batch_size=args.batch_size,
-                          num_threads=args.num_threads, image_size=args.image_size).feed()
-        inputs_Y = Images(args.files + '/trainB', num_epochs=args.num_epochs, batch_size=args.batch_size,
-                          num_threads=args.num_threads, image_size=args.image_size).feed()
-        G_loss, D_Y_loss, F_loss, D_X_loss, fake_y, fake_x = cycle_gan.model(inputs_X, inputs_Y)
+            betas=(args.beta_1, args.beta_2),
+            verbose=True
+        )
+        inputs_X = Images(infile_X, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='X')
+        inputs_Y = Images(infile_Y, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='Y')
+
+        G_loss, D_Y_loss, F_loss, D_X_loss, fake_y, fake_x = cycle_gan.model(inputs_X.feed(), inputs_Y.feed())
         optimizers = cycle_gan.optimize(G_loss, D_Y_loss, F_loss, D_X_loss)
 
         summary_op = tf.summary.merge_all()

@@ -41,16 +41,16 @@ def conv_batchnorm(params):
         """Convolution Block Builder"""
         if verbose:
             print('  {}: Creating convolution{} block w/ kernel size {}, stride {}, and {} filters.{}'.\
-                format(params['name'], ' (Transpose)' if params['is_transpose'] else '', \
-                    params['kernel_size'], params['stride'], params['num_filters'], \
+                format(params['name'], ' (Transpose)' if params['is_transpose'] else '',
+                    params['kernel_size'], params['stride'], params['num_filters'],
                     ' No Batch Normalization.' if params['skip_batch_norm'] else ''))
         conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
-        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'], \
-            strides=params['stride'], padding=params['padding'], \
+        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
+            strides=params['stride'], padding=params['padding'],
             data_format=params['data_format'], name=params['name'] + '-prebatch')
         if not params['skip_batch_norm']:
-            output = tf.layers.batch_normalization(output, training=is_training, \
-                reuse=params['reuse'], epsilon=params['epsilon'], \
+            output = tf.layers.batch_normalization(output, training=is_training,
+                reuse=params['reuse'], epsilon=params['epsilon'],
                 momentum=params['momentum'], name=params['name'] + '-bn')
         output = params['activation_fn'](output, name=params['name'] + '-activation')
         return output
@@ -84,16 +84,16 @@ def residual_block(params):
     def builder(inputs, is_training=True, verbose=False):
         """Residual Block Builder"""
         if verbose:
-            print('  {}: Creating residual block w/ kernel size {}, stride {}, and {} filters'.format( \
+            print('  {}: Creating residual block w/ kernel size {}, stride {}, and {} filters'.format(
                 params['name'], params['kernel_size'], params['stride'], params['num_filters']))
         conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
-        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'], \
-            strides=params['stride'], padding=params['padding'], \
+        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
+            strides=params['stride'], padding=params['padding'],
             data_format=params['data_format'], name=params['name'] + '-conv2d-1')
         output = instance_normalization(output)
         output = params['activation_fn'](output, name=params['name'] + '-activation')
-        output = conv(output, filters=params['num_filters'], kernel_size=params['kernel_size'],\
-            strides=params['stride'], padding=params['padding'], \
+        output = conv(output, filters=params['num_filters'], kernel_size=params['kernel_size'],
+            strides=params['stride'], padding=params['padding'],
             data_format=params['data_format'], name=params['name'] + '-conv2d-2')
         return inputs + output
     return builder
