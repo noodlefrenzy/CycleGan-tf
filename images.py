@@ -1,8 +1,17 @@
 import tensorflow as tf
+import random
+
+def to_image(data):
+    '''[-1., 1.] => [0., 1.] => [0, 255]'''
+    return tf.image.convert_image_dtype((data+1.0)/2.0, tf.uint8)
+
+def batch_to_image(batch):
+    '''Map to_image to a minibatch'''
+    return tf.map_fn(to_image, batch, dtype=tf.uint8)
 
 class Images:
     def __init__(self, path, num_epochs, batch_size=1, num_threads=2, image_size=256, crop_size=224, \
-                 should_crop=True, should_flip=True. should_shuffle=True):
+                 should_crop=False, should_flip=True, should_shuffle=True):
         self.path = path
         self.num_epochs = num_epochs
         self.batch_size = batch_size

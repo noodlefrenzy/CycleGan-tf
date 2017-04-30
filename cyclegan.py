@@ -1,6 +1,7 @@
 import tensorflow as tf
 from discriminator import Discriminator
 from generator import Generator
+from images import batch_to_image
 
 class CycleGAN:
     def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, betas=(0.5, 0.9)):
@@ -20,17 +21,16 @@ class CycleGAN:
         self.fake_y = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
 
     def model(self, x, y):
-        cycle_loss = self.cycle_consistency_loss(self.G, self.F, x, y)
+        cyc_loss = self.cycle_loss(self.G, self.F, x, y)
 
         fake_y = self.G(x)
         G_gan_loss = self.generator_loss(self.D_Y, fake_y)
-        G_loss =  G_gan_loss + cycle_loss
+        G_loss =  G_gan_loss + cyc_loss
         D_Y_loss = self.discriminator_loss(self.D_Y, y, self.fake_y)
 
-        # Y -> X
         fake_x = self.F(y)
         F_gan_loss = self.generator_loss(self.D_X, fake_x)
-        F_loss = F_gan_loss + cycle_loss
+        F_loss = F_gan_loss + cyc_loss
         D_X_loss = self.discriminator_loss(self.D_X, x, self.fake_x)
 
         # summary
@@ -43,12 +43,12 @@ class CycleGAN:
         tf.summary.scalar('loss/D_Y', D_Y_loss)
         tf.summary.scalar('loss/F', F_gan_loss)
         tf.summary.scalar('loss/D_X', D_X_loss)
-        tf.summary.scalar('loss/cycle', cycle_loss)
+        tf.summary.scalar('loss/cycle', cyc_loss)
 
-        tf.summary.image('X/generated', utils.batch_convert2int(self.G(x)))
-        tf.summary.image('X/reconstruction', utils.batch_convert2int(self.F(self.G(x))))
-        tf.summary.image('Y/generated', utils.batch_convert2int(self.F(y)))
-        tf.summary.image('Y/reconstruction', utils.batch_convert2int(self.G(self.F(y))))
+        tf.summary.image('X/generated', batch_to_image(self.G(x)))
+        tf.summary.image('X/reconstruction', batch_to_image(self.F(self.G(x))))
+        tf.summary.image('Y/generated', batch_to_image(self.F(y)))
+        tf.summary.image('Y/reconstruction', batch_to_image(self.G(self.F(y))))
 
         return G_loss, D_Y_loss, F_loss, D_X_loss, fake_y, fake_x
 
@@ -80,9 +80,9 @@ class CycleGAN:
             error_real = tf.reduce_mean(tf.squared_difference(D(y), 1.))
             error_fake = tf.reduce_mean(tf.square(D(fake_y)))
         else:
-            # use negative log-likelihood
-            error_real = -tf.reduce_mean(ops.safe_log(D(y)))
-            error_fake = -tf.reduce_mean(ops.safe_log(1-D(fake_y)))
+            # use negative log-likelihood (+ e to avoid errors at zero)
+            error_real = -tf.reduce_mean(tf.log(D(y) + 1e-12))
+            error_fake = -tf.reduce_mean(tf.log(1 - D(fake_y) + 1e-12))
         loss = (error_real + error_fake) / 2
         return loss
 
@@ -95,7 +95,7 @@ class CycleGAN:
             loss = -tf.reduce_mean(ops.safe_log(D(fake_y))) / 2
         return loss
 
-    def cycle_consistency_loss(self, F, G, x, y):
+    def cycle_loss(self, F, G, x, y):
         forward_loss = tf.reduce_mean(tf.abs(F(G(x))-x))
         backward_loss = tf.reduce_mean(tf.abs(G(F(y))-y))
         loss = self.lambdas[0] * forward_loss + self.lambdas[1] * backward_loss
