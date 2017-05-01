@@ -4,10 +4,10 @@ from generator import Generator
 from images import batch_to_image
 
 class CycleGAN:
-    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, betas=(0.5, 0.9), verbose=False):
+    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, beta=0.5, verbose=False):
         self.lambdas = lambdas
         self.use_least_square_loss = lsgan
-        self.betas = betas
+        self.beta = beta
         self.starting_learning_rate = start_lr
         self.verbose = verbose
         self.default_params = {
@@ -70,7 +70,7 @@ class CycleGAN:
                  self.starting_learning_rate))
             tf.summary.scalar('learning_rate/{}'.format(name), learning_rate)
 
-            learning_step = (tf.train.AdamOptimizer(learning_rate, beta1=self.betas[0], name=name).minimize(
+            learning_step = (tf.train.AdamOptimizer(learning_rate, beta1=self.beta, name=name).minimize(
                 loss, global_step=global_step, var_list=variables))
             return learning_step
 
@@ -89,8 +89,8 @@ class CycleGAN:
             error_fake = tf.reduce_mean(tf.square(D(fake_y)))
         else:
             # use negative log-likelihood (+ e to avoid errors at zero)
-            error_real = -tf.reduce_mean(tf.log(D(y) + 1e-12))
-            error_fake = -tf.reduce_mean(tf.log(1 - D(fake_y) + 1e-12))
+            error_real = -tf.reduce_mean(tf.log(tf.maximum(D(y), 1e-12)))
+            error_fake = -tf.reduce_mean(tf.log(tf.maximum(1 - D(fake_y)), 1e-12))
         loss = (error_real + error_fake) / 2
         return loss
 
@@ -100,7 +100,7 @@ class CycleGAN:
             loss = tf.reduce_mean(tf.squared_difference(D(fake_y), 1.))
         else:
             # use negative log-likelihood (+ e to avoid errors at zero)
-            loss = -tf.reduce_mean(tf.log(D(fake_y) + 1e-12)) / 2
+            loss = -tf.reduce_mean(tf.log(tf.maximum(D(fake_y), 1e-12))) / 2
         return loss
 
     def cycle_loss(self, F, G, x, y):

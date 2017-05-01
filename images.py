@@ -43,7 +43,7 @@ class Images():
   def preprocess(self, image):
     image = tf.image.resize_images(image, size=(self.image_size, self.image_size))
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-    image = (image / 128.) - 1.
+    image = (image / 127.5) - 1.
     image.set_shape([self.image_size, self.image_size, 3])
     return image
 

@@ -40,7 +40,7 @@ def norm(inputs, params, is_training=True):
     elif params['norm_type'] == 'I':
         with tf.variable_scope('instance_norm'):
             depth = inputs.get_shape()[3]
-            scale = tf.get_variable('scale', [depth], initializer=tf.random_normal_initializer(1.0, 0.01))
+            scale = tf.get_variable('scale', [depth], initializer=tf.random_normal_initializer(1.0, 0.02))
             offset = tf.get_variable('offset', [depth], initializer=tf.constant_initializer(0.0))
             mean, variance = tf.nn.moments(inputs, axes=[1, 2], keep_dims=True)
             inv = tf.rsqrt(variance + 1e-5)
@@ -49,7 +49,7 @@ def norm(inputs, params, is_training=True):
     else:
         return inputs
 
-def conv_batchnorm(params):
+def conv_block(params):
     """Creates Convolution Block Builder from given parameters"""
     def builder(inputs, is_training=True, verbose=False):
         """Convolution Block Builder"""
@@ -74,7 +74,7 @@ def constrained_conv_batchnorm(kernel_size, stride, activation_fn, params):
     params['stride'] = stride
     if activation_fn is not None:
         params['activation_fn'] = activation_fn
-    return conv_batchnorm(params)
+    return conv_block(params)
 
 def residual_block(params):
     """Creates Residual Block Builder from given parameters"""
@@ -104,7 +104,7 @@ def fractional_conv_batchnorm(params):
     params['kernel_size'] = 3
     params['stride'] = 2
     params['is_transpose'] = True
-    return conv_batchnorm(params)
+    return conv_block(params)
 
 activation_functions = {
     'L': leaky_relu,
@@ -113,7 +113,7 @@ activation_functions = {
 }
 
 block_builders = {
-    'c': conv_batchnorm,
+    'c': conv_block,
     'd': lambda params: constrained_conv_batchnorm(3, 2, None, params),
     'R': residual_block,
     'u': fractional_conv_batchnorm,

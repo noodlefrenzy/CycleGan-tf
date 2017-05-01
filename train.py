@@ -3,7 +3,9 @@ from images import Images, ImageCache
 from datetime import datetime
 import logging
 import os
+import scipy.misc
 import tensorflow as tf
+from images import to_image
 
 import argparse
 
@@ -12,15 +14,14 @@ parser.add_argument('--bs', '--batch-size', type=int, default=1, help='Batch siz
 parser.add_argument('--im', '--image-size', type=int, default=256, help='Image size (images are square)', dest='image_size')
 parser.add_argument('-n', '--num-epochs', type=int, default=20, help='Number of epochs to train', dest='num_epochs')
 parser.add_argument('-t', '--num-threads', type=int, default=2, help='Number of threads', dest='num_threads')
-parser.add_argument('--lsl', '--least-square-loss', action='store_true',
-                    help='Whether to use least-square loss (defaults to log-likelihood)', dest='use_least_square')
+parser.add_argument('--loss', choices=['ls', 'log'], help='Type of GAN loss function to use.', dest='gan_loss')
 parser.add_argument('--l1', '--lambda1', type=float, default=10., help='Weight for cycle loss (forward)', dest='lambda_1')
 parser.add_argument('--l2', '--lambda2', type=float, default=10., help='Weight for cycle loss (reverse)', dest='lambda_2')
 parser.add_argument('--lr', '--learning-rate', type=float, default=0.0002, help='Starting learning rate', dest='learning_rate')
-parser.add_argument('--b1', '--beta1', type=float, default=0.5, help='Momentum for Adam optimizer (G)', dest='beta_1')
-parser.add_argument('--b2', '--beta2', type=float, default=0.5, help='Momentum for Adam optimizer (D)', dest='beta_2')
+parser.add_argument('--b', '--beta', type=float, default=0.5, help='Momentum for Adam optimizer (G)', dest='beta')
 parser.add_argument('-i', '--input-prefix', help='Prefix path name to tfrecords files.', required=True, dest='input_prefix')
 parser.add_argument('-c', '--checkpoint-dir', default='./checkpoints', help='Checkpoint directory', dest='checkpoint_dir')
+parser.add_argument('-s', '--sample', '--sample-dir', help='Store sample images to ...', dest='sample_dir')
 
 def train(args):
     now = datetime.now().strftime("%Y%m%d-%H%M")
@@ -36,10 +37,10 @@ def train(args):
         cycle_gan = CycleGAN(
             batch_size=args.batch_size,
             image_size=args.image_size,
-            lsgan=args.use_least_square,
+            lsgan=args.gan_loss == 'ls',
             lambdas=(args.lambda_1, args.lambda_2),
             start_lr=args.learning_rate,
-            betas=(args.beta_1, args.beta_2),
+            beta=args.beta,
             verbose=False
         )
         inputs_X = Images(infile_X, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='X')
@@ -77,6 +78,10 @@ def train(args):
                 train_writer.flush()
 
                 if step % 100 == 0:
+                    if args.sample_dir:
+                        os.makedirs(args.sample_dir, exist_ok=True)
+                        scipy.misc.imsave(os.path.join(args.sample_dir, 'fake_x_{}.jpg'.format(step)), cur_fake_x[0])
+                        scipy.misc.imsave(os.path.join(args.sample_dir, 'fake_y_{}.jpg'.format(step)), cur_fake_y[0])
                     logging.info('-----------Step %d:-------------' % step)
                     logging.info('  G_loss   : {}'.format(cur_G_loss))
                     logging.info('  D_Y_loss : {}'.format(cur_D_Y_loss))

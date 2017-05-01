@@ -1,5 +1,6 @@
 import logging
 import os
+from shutil import copyfile
 import tensorflow as tf
 
 import argparse
@@ -17,8 +18,19 @@ def exists(x):
     return x
 
 parser = argparse.ArgumentParser(description='Convert training and testing images to tfrecords files.')
-parser.add_argument('--files', type=exists, help='Location of training files', required=True)
-parser.add_argument('-o', '--output-prefix', help='Prefix file/path for output tfrecords files', required=True,
+subp = parser.add_subparsers(title='subcommands', description='valid subcommands', dest='command')
+
+prepped = subp.add_parser('prepped', aliases=['p'], help='For files already split into trainA/trainB/testA/testB')
+prepped.add_argument('--files', type=exists, help='Location of training files', required=True)
+prepped.add_argument('-o', '--output-prefix', help='Prefix file/path for output tfrecords files', required=True,
+                    dest='output_prefix')
+
+raw = subp.add_parser('raw')
+raw.add_argument('--d1', '--dir1', '--directory1', dest='dir_1', help='Directory containing "Set A" of images.', required=True)
+raw.add_argument('--d2', '--dir2', '--directory2', dest='dir_2', help='Directory containing "Set B" of images.', required=True)
+raw.add_argument('-s', '--split', dest='split_pct', type=int, default=70, help='Split percent for training set.')
+raw.add_argument('--outdir', '--out-dir', dest='out_dir', help='Will split the data and store in "prepped" format into this directory.', required=True)
+raw.add_argument('-o', '--output-prefix', help='Prefix file/path for output tfrecords files', required=True,
                     dest='output_prefix')
 
 def reader(path, shuffle=True):
@@ -39,7 +51,23 @@ def reader(path, shuffle=True):
 
     return files
 
-def writer(root_path, output_prefix):
+def raw_writer(dir_1, dir_2, split, out_dir, output_prefix):
+    files_1 = reader(dir_1)
+    n_train_1 = int(len(files_1) * float(split) / 100.)
+    files_2 = reader(dir_2)
+    n_train_2 = int(len(files_2) * float(split) / 100.)
+    train_1, test_1 = files_1[:n_train_1], files_1[n_train_1:]
+    train_2, test_2 = files_2[:n_train_2], files_2[n_train_2:]
+
+    for sub, files in [('trainA', train_1), ('trainB', train_2), ('testA', test_1), ('testB', test_2)]:
+        cur_dir = os.path.join(out_dir, sub)
+        os.makedirs(cur_dir, exist_ok=True)
+        for file in files:
+            copyfile(file, os.path.join(cur_dir, os.path.basename(file)))
+
+    prepped_writer(out_dir, output_prefix)
+
+def prepped_writer(root_path, output_prefix):
     as_bytes = lambda data: tf.train.Feature(bytes_list=tf.train.BytesList(value=[data]))
     as_example = lambda fn, data: tf.train.Example(features=tf.train.Features(feature={
         'image/file_name': as_bytes(tf.compat.as_bytes(os.path.basename(fn))),
@@ -68,10 +96,10 @@ def writer(root_path, output_prefix):
         print('Done.')
         record_writer.close()
 
-def main(parsed_args):
-    writer(parsed_args.files, parsed_args.output_prefix)
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     result = parser.parse_args()
-    main(result)
+    if result.command == 'raw':
+        raw_writer(result.dir_1, result.dir_2, result.split_pct, result.out_dir, result.output_prefix)
+    else:
+        prepped_writer(result.files, result.output_prefix)
