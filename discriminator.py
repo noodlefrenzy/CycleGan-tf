@@ -11,14 +11,16 @@ class Discriminator:
         self.verbose = verbose
 
     def __call__(self, inputs):
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=self.params['reuse']):
             if self.verbose:
                 print('Building Discriminator %s' % self.name)
             output = build_blocks([
-                'C64NoBN', 'C128', 'C256', 'C512x2',
+                'C64N', 'C128', 'C256', 'C512x2',
             ], self.params, is_training=self.is_training, verbose=self.verbose)(inputs)
             output = tf.layers.conv2d(output, filters=1, kernel_size=1, padding=self.params['padding'],
               data_format=self.params['data_format'], name='final_reshape')
 
         self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
         self.params['reuse'] = True
+
+        return output

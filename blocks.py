@@ -22,11 +22,9 @@ c                           # Conv/BatchNorm/Relu
 (?P<kernel_size>\d+)        # Kernel size
 s(?P<stride>\d+)            # Stride
 -
-)|(
-(?P<block_type>[dRuC])      # The other blocks have a consistent pattern
-))
+)|(?P<block_type>[dRuC]))   # The other blocks have a consistent pattern
 (?P<num_filters>\d+)        # Number of filters
-(?P<skip_bn>NoBN)?           # Whether to avoid batch-norm
+(?P<norm_type>[BIN])?       # Batch, Instance, or No normalization 
 -?(?P<activation_fn>[LT])?  # Type of activation function (if not ReLU)
 x?(?P<repeats>\d+)?         # Number of times to repeat
 ''', re.VERBOSE)
@@ -34,6 +32,22 @@ x?(?P<repeats>\d+)?         # Number of times to repeat
 def leaky_relu(inputs, alpha=0.2, name='leaky_relu'):
     """Activation function for 'leaky' ReLU"""
     return tf.maximum(alpha * inputs, inputs, name=name)
+
+def norm(inputs, params, is_training=True):
+    if params['norm_type'] == 'B':
+        with tf.variable_scope('batch_norm'):
+            return tf.layers.batch_normalization(inputs, training=is_training)
+    elif params['norm_type'] == 'I':
+        with tf.variable_scope('instance_norm'):
+            depth = inputs.get_shape()[3]
+            scale = tf.get_variable('scale', [depth], initializer=tf.random_normal_initializer(1.0, 0.01))
+            offset = tf.get_variable('offset', [depth], initializer=tf.constant_initializer(0.0))
+            mean, variance = tf.nn.moments(inputs, axes=[1, 2], keep_dims=True)
+            inv = tf.rsqrt(variance + 1e-5)
+            normalized = (inputs - mean) * inv
+            return scale * normalized + offset
+    else:
+        return inputs
 
 def conv_batchnorm(params):
     """Creates Convolution Block Builder from given parameters"""
@@ -44,16 +58,14 @@ def conv_batchnorm(params):
                 format(params['name'], ' (Transpose)' if params['is_transpose'] else '',
                     params['kernel_size'], params['stride'], params['num_filters'],
                     ' No Batch Normalization.' if params['skip_batch_norm'] else ''))
-        conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
-        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
-            strides=params['stride'], padding=params['padding'],
-            data_format=params['data_format'], name=params['name'] + '-prebatch')
-        if not params['skip_batch_norm']:
-            output = tf.layers.batch_normalization(output, training=is_training,
-                reuse=params['reuse'], epsilon=params['epsilon'],
-                momentum=params['momentum'], name=params['name'] + '-bn')
-        output = params['activation_fn'](output, name=params['name'] + '-activation')
-        return output
+        with tf.variable_scope(params['name'], reuse=params['reuse']):
+            conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
+            output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
+                strides=params['stride'], padding=params['padding'],
+                data_format=params['data_format'], name='prebatch')
+            output = norm(output, params, is_training=is_training)
+            output = params['activation_fn'](output, name='activation')
+            return output
     return builder
 
 def constrained_conv_batchnorm(kernel_size, stride, activation_fn, params):
@@ -63,17 +75,6 @@ def constrained_conv_batchnorm(kernel_size, stride, activation_fn, params):
     if activation_fn is not None:
         params['activation_fn'] = activation_fn
     return conv_batchnorm(params)
-
-def instance_normalization(inputs):
-    """Instance (non-Batch) Normalization, used in Residual Blocks"""
-    _, _, rows, _ = inputs.get_shape().as_list()
-    var_shape = [rows]
-    _mu, sigma_sq = tf.nn.moments(inputs, [2, 3], keep_dims=True)
-    shift = tf.Variable(tf.zeros(var_shape))
-    scale = tf.Variable(tf.ones(var_shape))
-    epsilon = 1e-3
-    normalized = (inputs - _mu) / (sigma_sq + epsilon)**(.5)
-    return scale * normalized + shift
 
 def residual_block(params):
     """Creates Residual Block Builder from given parameters"""
@@ -86,16 +87,16 @@ def residual_block(params):
         if verbose:
             print('  {}: Creating residual block w/ kernel size {}, stride {}, and {} filters'.format(
                 params['name'], params['kernel_size'], params['stride'], params['num_filters']))
-        conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
-        output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
-            strides=params['stride'], padding=params['padding'],
-            data_format=params['data_format'], name=params['name'] + '-conv2d-1')
-        output = instance_normalization(output)
-        output = params['activation_fn'](output, name=params['name'] + '-activation')
-        output = conv(output, filters=params['num_filters'], kernel_size=params['kernel_size'],
-            strides=params['stride'], padding=params['padding'],
-            data_format=params['data_format'], name=params['name'] + '-conv2d-2')
-        return inputs + output
+        with tf.variable_scope(params['name'], reuse=params['reuse']):
+            conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
+            output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
+                strides=params['stride'], padding=params['padding'],
+                data_format=params['data_format'], name='conv2d-1')
+            output = params['activation_fn'](output, name='activation')
+            output = conv(output, filters=params['num_filters'], kernel_size=params['kernel_size'],
+                strides=params['stride'], padding=params['padding'],
+                data_format=params['data_format'], name='conv2d-2')
+            return inputs + output
     return builder
 
 def fractional_conv_batchnorm(params):
@@ -129,7 +130,7 @@ def cvt_dict(matchdict, default_params):
             params[k] = int(matchdict[k])
     params['activation_fn'] = activation_functions[matchdict['activation_fn'] or 'relu']
     params['block_type'] = matchdict['block_type'] or 'c'
-    params['skip_batch_norm'] = matchdict['skip_bn'] is not None
+    params['norm_type'] = matchdict['norm_type'] or 'I'
     return params
 
 def build_blocks(block_list, default_params, is_training=True, verbose=False):
@@ -141,7 +142,7 @@ def build_blocks(block_list, default_params, is_training=True, verbose=False):
         for block_str in block_list:
             match = block_pattern.fullmatch(block_str)
             if match is None:
-                raise 'Unable to match block type from ' + block_str
+                raise Exception('Unable to match block type from ' + block_str)
             cur_params = cvt_dict(match.groupdict(), default_params)
             builder = block_builders[cur_params['block_type']]
             for _ in range(cur_params['repeats']):

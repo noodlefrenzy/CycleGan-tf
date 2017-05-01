@@ -11,13 +11,14 @@ class Generator:
         self.verbose = verbose
 
     def __call__(self, inputs):
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=self.params['reuse']):
             if self.verbose:
                 print('Building Generator %s' % self.name)
             output = build_blocks([
-                'c7s1-32', 'd64', 'd128', 'R128x6', 'u64', 'u32', 'c7s1-3'
+                'c7s1-32', 'd64', 'd128', 'R128x9', 'u64', 'u32', 'c7s1-3-T'
             ], self.params, is_training=self.is_training, verbose=self.verbose)(inputs)
-            output = output = tf.nn.tanh(output, name='final-tanh')
 
         self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
         self.params['reuse'] = True
+
+        return output

@@ -1,5 +1,5 @@
 from cyclegan import CycleGAN
-from images import Images
+from images import Images, ImageCache
 from datetime import datetime
 import logging
 import os
@@ -40,7 +40,7 @@ def train(args):
             lambdas=(args.lambda_1, args.lambda_2),
             start_lr=args.learning_rate,
             betas=(args.beta_1, args.beta_2),
-            verbose=True
+            verbose=False
         )
         inputs_X = Images(infile_X, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='X')
         inputs_Y = Images(infile_Y, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='Y')
@@ -60,14 +60,16 @@ def train(args):
 
         step = 0
         try:
+            fake_X_cache = ImageCache()
+            fake_Y_cache = ImageCache()
             while not coord.should_stop():
-                cur_fake_x, cur_fake_y = sess.run([fake_y, fake_x])
+                cur_fake_y, cur_fake_x = sess.run([fake_y, fake_x])
 
                 _, cur_G_loss, cur_D_Y_loss, cur_F_loss, cur_D_X_loss, summary = (
                     sess.run(
                         [optimizers, G_loss, D_Y_loss, F_loss, D_X_loss, summary_op],
-                        feed_dict={cycle_gan.fake_y: cur_fake_y,
-                                   cycle_gan.fake_x: cur_fake_x}
+                        feed_dict={cycle_gan.fake_y: fake_Y_cache.fetch(cur_fake_y),
+                                   cycle_gan.fake_x: fake_X_cache.fetch(cur_fake_x)}
                     )
                 )
 

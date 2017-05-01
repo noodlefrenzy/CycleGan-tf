@@ -11,7 +11,7 @@ class CycleGAN:
         self.starting_learning_rate = start_lr
         self.verbose = verbose
         self.default_params = {
-            'data_format': 'channels_first',
+            'data_format': 'channels_last',
             'padding': 'same',
             'epsilon': 1e-5,
             'momentum': 0.8,
