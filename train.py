@@ -22,6 +22,7 @@ parser.add_argument('--b', '--beta', type=float, default=0.5, help='Momentum for
 parser.add_argument('-i', '--input-prefix', help='Prefix path name to tfrecords files.', required=True, dest='input_prefix')
 parser.add_argument('-c', '--checkpoint-dir', default='./checkpoints', help='Checkpoint directory', dest='checkpoint_dir')
 parser.add_argument('-s', '--sample', '--sample-dir', help='Store sample images to ...', dest='sample_dir')
+parser.add_argument('--sigmoid', help='Sigmoid on Discriminator', dest='sigmoid')
 
 def train(args):
     now = datetime.now().strftime("%Y%m%d-%H%M")
@@ -41,6 +42,7 @@ def train(args):
             lambdas=(args.lambda_1, args.lambda_2),
             start_lr=args.learning_rate,
             beta=args.beta,
+            use_sigmoid=args.sigmoid,
             verbose=False
         )
         inputs_X = Images(infile_X, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='X')

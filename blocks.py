@@ -25,13 +25,26 @@ s(?P<stride>\d+)            # Stride
 )|(?P<block_type>[dRuC]))   # The other blocks have a consistent pattern
 (?P<num_filters>\d+)        # Number of filters
 (?P<norm_type>[BIN])?       # Batch, Instance, or No normalization 
--?(?P<activation_fn>[LT])?  # Type of activation function (if not ReLU)
+-?(?P<activation_fn>[LTP])? # Type of activation function (if not ReLU)
 x?(?P<repeats>\d+)?         # Number of times to repeat
+''', re.VERBOSE)
+
+#
+# From the SRGAN paper:
+#  Conv layers like c7s1-32 would be denoted as k7n32s1
+alt_block_pattern = re.compile('''
+
 ''', re.VERBOSE)
 
 def leaky_relu(inputs, alpha=0.2, name='leaky_relu'):
     """Activation function for 'leaky' ReLU"""
     return tf.maximum(alpha * inputs, inputs, name=name)
+
+def parametric_relu(inputs, name='prelu'):
+    """Activation function for learned leaky ReLU"""
+    with tf.variable_scope(name):
+        alpha = tf.get_variable('alpha', [1], initializer=tf.constant_initializer(0.2))
+        return tf.maximum(alpha * inputs, inputs, name='max')
 
 def norm(inputs, params, is_training=True):
     if params['norm_type'] == 'B':
@@ -109,6 +122,7 @@ def fractional_conv_batchnorm(params):
 activation_functions = {
     'L': leaky_relu,
     'T': tf.nn.tanh,
+    'P': parametric_relu,
     'relu': tf.nn.relu
 }
 

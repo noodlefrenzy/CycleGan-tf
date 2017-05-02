@@ -3,10 +3,11 @@ from blocks import build_blocks
 
 class Discriminator:
     """Discriminator from CycleGAN Paper"""
-    def __init__(self, name, params, is_training=True, verbose=False):
+    def __init__(self, name, params, use_sigmoid=False, is_training=True, verbose=False):
         self.name = name
         self.params = params.copy()
         self.is_training = is_training
+        self.use_sigmoid = use_sigmoid
         self.variables = None
         self.verbose = verbose
 
@@ -19,6 +20,8 @@ class Discriminator:
             ], self.params, is_training=self.is_training, verbose=self.verbose)(inputs)
             output = tf.layers.conv2d(output, filters=1, kernel_size=1, padding=self.params['padding'],
               data_format=self.params['data_format'], name='final_reshape')
+            if self.use_sigmoid:
+                output = tf.sigmoid(output, name='sigmoid')
 
         self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
         self.params['reuse'] = True

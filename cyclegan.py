@@ -4,7 +4,7 @@ from generator import Generator
 from images import batch_to_image
 
 class CycleGAN:
-    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, beta=0.5, verbose=False):
+    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, beta=0.5, use_sigmoid=False, verbose=False):
         self.lambdas = lambdas
         self.use_least_square_loss = lsgan
         self.beta = beta
@@ -21,9 +21,9 @@ class CycleGAN:
         self.is_training = tf.placeholder_with_default(True, shape=[], name='is_training')
 
         self.G = Generator('G', self.default_params, is_training=self.is_training, verbose=self.verbose)
-        self.D_Y = Discriminator('D_Y', self.default_params, is_training=self.is_training, verbose=self.verbose)
+        self.D_Y = Discriminator('D_Y', self.default_params, is_training=self.is_training, use_sigmoid=use_sigmoid, verbose=self.verbose)
         self.F = Generator('F', self.default_params, is_training=self.is_training, verbose=self.verbose)
-        self.D_X = Discriminator('D_X', self.default_params, is_training=self.is_training, verbose=self.verbose)
+        self.D_X = Discriminator('D_X', self.default_params, is_training=self.is_training, use_sigmoid=use_sigmoid, verbose=self.verbose)
 
         self.fake_x = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
         self.fake_y = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
@@ -90,7 +90,7 @@ class CycleGAN:
         else:
             # use negative log-likelihood (+ e to avoid errors at zero)
             error_real = -tf.reduce_mean(tf.log(tf.maximum(D(y), 1e-12)))
-            error_fake = -tf.reduce_mean(tf.log(tf.maximum(1 - D(fake_y)), 1e-12))
+            error_fake = -tf.reduce_mean(tf.log(tf.maximum(1 - D(fake_y), 1e-12)))
         loss = (error_real + error_fake) / 2
         return loss
 
