@@ -4,7 +4,7 @@ from generator import Generator
 from images import batch_to_image
 
 class CycleGAN:
-    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, beta=0.5, use_sigmoid=False, verbose=False):
+    def __init__(self, batch_size=1, image_size=256, start_lr=0.0002, lambdas=(10., 10.), lsgan=True, beta=0.5, network=None, verbose=False):
         self.lambdas = lambdas
         self.use_least_square_loss = lsgan
         self.beta = beta
@@ -18,12 +18,16 @@ class CycleGAN:
             'reuse': False
         }
 
+        self.G_network = network['generators']['G'] if network else None
+        self.F_network = network['generators']['F'] if network else None
+        self.D_X_network = network['discriminators']['D_X'] if network else None
+        self.D_Y_network = network['discriminators']['D_Y'] if network else None
         self.is_training = tf.placeholder_with_default(True, shape=[], name='is_training')
 
-        self.G = Generator('G', self.default_params, is_training=self.is_training, verbose=self.verbose)
-        self.D_Y = Discriminator('D_Y', self.default_params, is_training=self.is_training, use_sigmoid=use_sigmoid, verbose=self.verbose)
-        self.F = Generator('F', self.default_params, is_training=self.is_training, verbose=self.verbose)
-        self.D_X = Discriminator('D_X', self.default_params, is_training=self.is_training, use_sigmoid=use_sigmoid, verbose=self.verbose)
+        self.G = Generator('G', self.default_params, network=self.G_network, is_training=self.is_training, verbose=self.verbose)
+        self.D_Y = Discriminator('D_Y', self.default_params, network=self.D_Y_network, is_training=self.is_training, verbose=self.verbose)
+        self.F = Generator('F', self.default_params, network=self.F_network, is_training=self.is_training, verbose=self.verbose)
+        self.D_X = Discriminator('D_X', self.default_params, network=self.D_X_network, is_training=self.is_training, verbose=self.verbose)
 
         self.fake_x = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])
         self.fake_y = tf.placeholder(tf.float32, shape=[batch_size, image_size, image_size, 3])

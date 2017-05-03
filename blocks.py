@@ -166,19 +166,23 @@ def build_blocks(block_list, default_params, is_training=True, verbose=False):
         output = inputs
         names = {}
         for block_str in block_list:
-            match = block_pattern.fullmatch(block_str)
-            if match is None:
-                raise Exception('Unable to match block type from ' + block_str)
-            cur_params = cvt_dict(match.groupdict(), default_params)
-            builder = block_builders[cur_params['block_type']]
-            for _ in range(cur_params['repeats']):
-                cur_name = block_str
-                if cur_name in names:
-                    names[cur_name] += 1
-                    cur_name = block_str + '-' + str(names[block_str])
-                else:
-                    names[cur_name] = 1
-                cur_params['name'] = cur_name
-                output = builder(cur_params)(output, is_training=is_training, verbose=verbose)
+            try:
+                match = block_pattern.fullmatch(block_str)
+                if match is None:
+                    raise Exception('Unable to match block type from ' + block_str)
+                cur_params = cvt_dict(match.groupdict(), default_params)
+                builder = block_builders[cur_params['block_type']]
+                for _ in range(cur_params['repeats']):
+                    cur_name = block_str
+                    if cur_name in names:
+                        names[cur_name] += 1
+                        cur_name = block_str + '-' + str(names[block_str])
+                    else:
+                        names[cur_name] = 1
+                    cur_params['name'] = cur_name
+                    output = builder(cur_params)(output, is_training=is_training, verbose=verbose)
+            except Exception as e:
+                print('Failed to create block from {}: {}'.format(block_str, e))
+                raise
         return output
     return builder

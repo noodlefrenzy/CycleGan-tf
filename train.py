@@ -1,6 +1,7 @@
 from cyclegan import CycleGAN
 from images import Images, ImageCache
 from datetime import datetime
+import json
 import logging
 import os
 import scipy.misc
@@ -22,7 +23,8 @@ parser.add_argument('--b', '--beta', type=float, default=0.5, help='Momentum for
 parser.add_argument('-i', '--input-prefix', help='Prefix path name to tfrecords files.', required=True, dest='input_prefix')
 parser.add_argument('-c', '--checkpoint-dir', default='./checkpoints', help='Checkpoint directory', dest='checkpoint_dir')
 parser.add_argument('-s', '--sample', '--sample-dir', help='Store sample images to ...', dest='sample_dir')
-parser.add_argument('--sigmoid', help='Sigmoid on Discriminator', dest='sigmoid', action='store_true')
+parser.add_argument('--network', help='Network (JSON) file')
+parser.add_argument('-v', '--verbose', help='Turn on verbose printing for network creation', action='store_true', dest='verbose')
 
 def train(args):
     now = datetime.now().strftime("%Y%m%d-%H%M")
@@ -33,6 +35,11 @@ def train(args):
     infile_X, infile_Y = ['{}_{}.tfrecords'.format(args.input_prefix, p) for p in ['trainA', 'trainB']]
     logging.info('Loading data from "{}" and "{}"'.format(infile_X, infile_Y))
 
+    network = None
+    if args.network:
+        with open(args.network, 'r') as nf:
+            network = json.load(nf)
+
     graph = tf.Graph()
     with graph.as_default():
         cycle_gan = CycleGAN(
@@ -42,8 +49,8 @@ def train(args):
             lambdas=(args.lambda_1, args.lambda_2),
             start_lr=args.learning_rate,
             beta=args.beta,
-            use_sigmoid=args.sigmoid,
-            verbose=False
+            network=network,
+            verbose=args.verbose
         )
         inputs_X = Images(infile_X, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='X')
         inputs_Y = Images(infile_Y, batch_size=args.batch_size, image_size=args.image_size, num_threads=args.num_threads, name='Y')
