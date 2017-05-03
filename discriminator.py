@@ -16,10 +16,8 @@ class Discriminator:
             if self.verbose:
                 print('Building Discriminator %s' % self.name)
             output = build_blocks([
-                'C64N', 'C128', 'C256', 'C512x2',
+                'C64N', 'C128', 'C256', 'C512x2', 'c1s1-1-N'
             ], self.params, is_training=self.is_training, verbose=self.verbose)(inputs)
-            output = tf.layers.conv2d(output, filters=1, kernel_size=1, padding=self.params['padding'],
-              data_format=self.params['data_format'], name='final_reshape')
             if self.use_sigmoid:
                 output = tf.sigmoid(output, name='sigmoid')
 

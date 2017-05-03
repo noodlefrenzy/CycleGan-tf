@@ -18,15 +18,15 @@ import tensorflow as tf
 # Let's build regex to match these and pull out the components:
 block_pattern = re.compile('''
 ((
-c                           # Conv/BatchNorm/Relu
-(?P<kernel_size>\d+)        # Kernel size
-s(?P<stride>\d+)            # Stride
+c                             # Conv/BatchNorm/Relu
+(?P<kernel_size>\d+)          # Kernel size
+s(?P<stride>\d+)              # Stride
 -
-)|(?P<block_type>[dRuC]))   # The other blocks have a consistent pattern
-(?P<num_filters>\d+)        # Number of filters
-(?P<norm_type>[BIN])?       # Batch, Instance, or No normalization 
--?(?P<activation_fn>[LTP])? # Type of activation function (if not ReLU)
-x?(?P<repeats>\d+)?         # Number of times to repeat
+)|(?P<block_type>[dRuC]))     # The other blocks have a consistent pattern
+(?P<num_filters>\d+)          # Number of filters
+(?P<norm_type>[BIN])?         # Batch, Instance, or No normalization 
+-?(?P<activation_fn>[LTPN])?  # Type of activation function (if not ReLU)
+x?(?P<repeats>\d+)?           # Number of times to repeat
 ''', re.VERBOSE)
 
 #
@@ -36,15 +36,14 @@ alt_block_pattern = re.compile('''
 
 ''', re.VERBOSE)
 
-def leaky_relu(inputs, alpha=0.2, name='leaky_relu'):
+def leaky_relu(inputs, alpha=0.2):
     """Activation function for 'leaky' ReLU"""
-    return tf.maximum(alpha * inputs, inputs, name=name)
+    return tf.maximum(alpha * inputs, inputs)
 
-def parametric_relu(inputs, name='prelu'):
+def parametric_relu(inputs):
     """Activation function for learned leaky ReLU"""
-    with tf.variable_scope(name):
-        alpha = tf.get_variable('alpha', [1], initializer=tf.constant_initializer(0.2))
-        return tf.maximum(alpha * inputs, inputs, name='max')
+    alpha = tf.get_variable('alpha', [1], initializer=tf.constant_initializer(0.2))
+    return tf.maximum(alpha * inputs, inputs, name='max')
 
 def norm(inputs, params, is_training=True):
     if params['norm_type'] == 'B':
@@ -62,22 +61,42 @@ def norm(inputs, params, is_training=True):
     else:
         return inputs
 
+def activate(inputs, params):
+    fn_type = params['activation_fn']
+    if fn_type == 'L':
+        alpha = params['alpha'] if 'alpha' in params else 0.2
+        with tf.variable_scope('LReLU_{}'.format(alpha)):
+            return leaky_relu(inputs, alpha=alpha)
+    elif fn_type == 'T':
+        with tf.variable_scope('tanh'):
+            return tf.nn.tanh(inputs)
+    elif fn_type == 'P':
+        with tf.variable_scope('PReLu'):
+            return parametric_relu(inputs)
+    elif fn_type == 'relu':
+        with tf.variable_scope('ReLU'):
+            return tf.nn.relu(inputs)
+    elif fn_type == 'N':
+        return inputs
+    else:
+        raise BaseException('Invalid activation function {}'.format(fn_type))
+
 def conv_block(params):
     """Creates Convolution Block Builder from given parameters"""
     def builder(inputs, is_training=True, verbose=False):
         """Convolution Block Builder"""
         if verbose:
-            print('  {}: Creating convolution{} block w/ kernel size {}, stride {}, and {} filters.{}'.\
+            print('  {}: Creating convolution{} block w/ kernel size {}, stride {}, and {} filters. Norm={}'.\
                 format(params['name'], ' (Transpose)' if params['is_transpose'] else '',
                     params['kernel_size'], params['stride'], params['num_filters'],
-                    ' No Batch Normalization.' if params['skip_batch_norm'] else ''))
+                    params['norm_type']))
         with tf.variable_scope(params['name'], reuse=params['reuse']):
             conv = tf.layers.conv2d_transpose if params['is_transpose'] else tf.layers.conv2d
             output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
                 strides=params['stride'], padding=params['padding'],
                 data_format=params['data_format'], name='prebatch')
             output = norm(output, params, is_training=is_training)
-            output = params['activation_fn'](output, name='activation')
+            output = activate(output, params)
             return output
     return builder
 
@@ -105,7 +124,7 @@ def residual_block(params):
             output = conv(inputs, filters=params['num_filters'], kernel_size=params['kernel_size'],
                 strides=params['stride'], padding=params['padding'],
                 data_format=params['data_format'], name='conv2d-1')
-            output = params['activation_fn'](output, name='activation')
+            output = activate(inputs, params)
             output = conv(output, filters=params['num_filters'], kernel_size=params['kernel_size'],
                 strides=params['stride'], padding=params['padding'],
                 data_format=params['data_format'], name='conv2d-2')
@@ -119,19 +138,12 @@ def fractional_conv_batchnorm(params):
     params['is_transpose'] = True
     return conv_block(params)
 
-activation_functions = {
-    'L': leaky_relu,
-    'T': tf.nn.tanh,
-    'P': parametric_relu,
-    'relu': tf.nn.relu
-}
-
 block_builders = {
     'c': conv_block,
-    'd': lambda params: constrained_conv_batchnorm(3, 2, None, params),
+    'd': lambda params: constrained_conv_batchnorm(3, 2, 'N', params),
     'R': residual_block,
     'u': fractional_conv_batchnorm,
-    'C': lambda params: constrained_conv_batchnorm(4, 2, leaky_relu, params)
+    'C': lambda params: constrained_conv_batchnorm(4, 2, 'L', params)
 }
 
 def cvt_dict(matchdict, default_params):
@@ -142,7 +154,7 @@ def cvt_dict(matchdict, default_params):
     for k in ['kernel_size', 'stride', 'num_filters', 'repeats']:
         if matchdict[k] is not None:
             params[k] = int(matchdict[k])
-    params['activation_fn'] = activation_functions[matchdict['activation_fn'] or 'relu']
+    params['activation_fn'] = matchdict['activation_fn'] or 'relu'
     params['block_type'] = matchdict['block_type'] or 'c'
     params['norm_type'] = matchdict['norm_type'] or 'I'
     return params

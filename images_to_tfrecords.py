@@ -45,7 +45,7 @@ def reader(path, shuffle=True):
         # random ordering of the images with respect to label in the
         # saved TFRecord files. Make the randomization repeatable.
         shuffled_index = list(range(len(files)))
-        random.shuffle(shuffled_index)
+        random.shuffle(files)
 
         files = [files[i] for i in shuffled_index]
 
@@ -67,6 +67,13 @@ def raw_writer(dir_1, dir_2, split, out_dir, output_prefix):
 
     prepped_writer(out_dir, output_prefix)
 
+def preprocess(image, image_size=256):
+    image = tf.image.resize_images(image, size=(image_size, image_size))
+    image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    image = (image / 127.5) - 1.
+    image.set_shape([image_size, image_size, 3])
+    return image
+
 def prepped_writer(root_path, output_prefix):
     as_bytes = lambda data: tf.train.Feature(bytes_list=tf.train.BytesList(value=[data]))
     as_example = lambda fn, data: tf.train.Example(features=tf.train.Features(feature={
@@ -86,7 +93,7 @@ def prepped_writer(root_path, output_prefix):
 
         for ix, file in enumerate(files):
             with tf.gfile.FastGFile(file, 'rb') as f:
-                image_data = f.read()
+                image_data = preprocess(f.read())
 
             example = as_example(file, image_data)
             record_writer.write(example.SerializeToString())
